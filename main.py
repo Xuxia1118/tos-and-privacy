@@ -82,10 +82,20 @@ async def on_message(message):
 async def on_reaction_add(reaction, user):
     if user.bot:
         return
+
+    # 非驗證頻道 且 反應是 ➕
     if reaction.emoji == "➕" and reaction.message.channel.id != VERIFY_CHANNEL_ID:
         message = reaction.message
+
+        # 防止重複複製同一訊息
+        if message.id in copied_messages:
+            return
+        copied_messages.add(message.id)
+
         if not message.content:
             return
+
+        # 建立 webhook 模擬玩家發送
         webhook = await message.channel.create_webhook(name=user.display_name)
         await webhook.send(
             content=message.content,
@@ -94,6 +104,10 @@ async def on_reaction_add(reaction, user):
         )
         await webhook.delete()
 
+        # 在複製的訊息上也加 ➕（不會再觸發迴圈）
+        async for msg in message.channel.history(limit=1):
+            if msg.id not in copied_messages:
+                await msg.add_reaction("➕")
 keep_alive()
 
 bot.run(os.environ["TOKEN"])
