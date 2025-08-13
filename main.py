@@ -48,6 +48,51 @@ async def on_message(message):
         await message.add_reaction("❌")
 
     await bot.process_commands(message)
+@bot.event
+async def on_message(message):
+    if message.author.bot:
+        return
+
+    if message.channel.id == VERIFY_CHANNEL_ID:
+        if message.content.strip() == TARGET_MESSAGE:
+            member = message.author
+            role = discord.utils.get(message.guild.roles, name=ROLE_NAME)
+            if not role:
+                await message.channel.send("⚠️ 無法找到身分組，請通知管理員。")
+                await message.add_reaction("❌")
+                return
+            if role not in member.roles:
+                await member.add_roles(role)
+            await message.add_reaction("✅")
+        else:
+            await message.channel.send(f"{message.author.mention} ⚠️ 請輸入正確的驗證訊息。")
+            await message.add_reaction("❌")
+    else:
+        # 非驗證頻道：檢查上一則訊息是否相同
+        try:
+            history = [msg async for msg in message.channel.history(limit=2)]
+            if len(history) == 2 and history[1].content == message.content:
+                await message.add_reaction("➕")
+        except Exception as e:
+            print(f"檢查歷史訊息時出錯: {e}")
+
+    await bot.process_commands(message)
+
+@bot.event
+async def on_reaction_add(reaction, user):
+    if user.bot:
+        return
+    if reaction.emoji == "➕" and reaction.message.channel.id != VERIFY_CHANNEL_ID:
+        message = reaction.message
+        if not message.content:
+            return
+        webhook = await message.channel.create_webhook(name=user.display_name)
+        await webhook.send(
+            content=message.content,
+            username=user.display_name,
+            avatar_url=user.avatar.url if user.avatar else None
+        )
+        await webhook.delete()
 
 keep_alive()
 
