@@ -114,9 +114,9 @@ async def on_reaction_add(reaction, user):
         # 如果有上一個複製訊息，把它的 ➕ 移除
         if last_copied_message:
             try:
-                await last_copied_message.clear_reaction("➕")
+                await last_copied_message.clear_reactions()
             except Exception as e:
-                print(f"刪除上一個 ➕ 出錯: {e}")
+                print(f"刪除上一個訊息的表情符號時出錯: {e}")
 
         # 更新記錄
         last_copied_message = new_msg
