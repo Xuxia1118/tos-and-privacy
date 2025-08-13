@@ -102,7 +102,23 @@ async def on_reaction_add(reaction, user):
             username=user.display_name,
             avatar_url=user.avatar.url if user.avatar else None
         )
+        
         await webhook.delete()
+            # 在複製的訊息上也加 ➕（不會再觸發迴圈）
+        async for msg in message.channel.history(limit=1):
+            if msg.id not in copied_messages:
+                await msg.add_reaction("➕")
+    # 複製並轉發訊息（防止自己觸發自己）
+@bot.event
+async def on_message(message):
+    if message.author == bot.user:  # 防止自己觸發自己
+        return
+
+    # 複製原訊息並發送
+    await message.channel.send(f"複製：{message.content}")
+
+    # 確保其他指令仍然能運作
+    await bot.process_commands(message)
 
 keep_alive()
 
