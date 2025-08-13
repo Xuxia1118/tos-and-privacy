@@ -114,13 +114,17 @@ async def on_reaction_add(reaction, user):
         # 如果有上一個複製訊息，把它的 ➕ 移除
         if last_copied_message:
             try:
-                await last_copied_message.clear_reactions()
+                await asyncio.sleep(0.5)  # 等待 Discord 更新
+                perms = last_copied_message.channel.permissions_for(last_copied_message.guild.me)
+                if perms.manage_messages:
+                    await last_copied_message.clear_reactions()
+                else:
+                    print("⚠️ 權限不足，無法刪除表情符號（需要管理訊息權限）")
             except Exception as e:
-                print(f"刪除上一個訊息的表情符號時出錯: {e}")
+                print(f"刪除上一個訊息表情符號時出錯: {e}")
 
-        # 更新記錄
         last_copied_message = new_msg
-        copied_messages.add(message.id)  # 標記這條訊息已被複製
+        copied_messages.add(message.id)
 
 keep_alive()
 
