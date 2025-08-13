@@ -87,14 +87,6 @@ async def on_reaction_add(reaction, user):
     if reaction.emoji == "➕" and reaction.message.channel.id != VERIFY_CHANNEL_ID:
         message = reaction.message
 
-        # 防止重複複製同一訊息
-        if message.id in copied_messages:
-            return
-        copied_messages.add(message.id)
-
-        if not message.content:
-            return
-
         # 建立 webhook 模擬玩家發送
         webhook = await message.channel.create_webhook(name=user.display_name)
         await webhook.send(
