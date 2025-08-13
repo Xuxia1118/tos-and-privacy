@@ -104,10 +104,6 @@ async def on_reaction_add(reaction, user):
         )
         await webhook.delete()
 
-        # 在複製的訊息上也加 ➕（不會再觸發迴圈）
-        async for msg in message.channel.history(limit=1):
-            if msg.id not in copied_messages:
-                await msg.add_reaction("➕")
 keep_alive()
 
 bot.run(os.environ["TOKEN"])
