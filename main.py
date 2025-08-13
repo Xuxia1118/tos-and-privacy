@@ -12,6 +12,11 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 ROLE_NAME = "乖寶寶"
 VERIFY_CHANNEL_ID = 1398732880909434880
 TARGET_MESSAGE = "我已完成伺服器名稱更改，且同意遵守一切規則並維護和平友善的環境。"
+# 記錄上一個複製訊息
+last_copied_message = None
+# 記錄已被複製過的原始訊息 ID
+copied_messages = set()
+
 
 @bot.event
 async def on_ready():
@@ -87,19 +92,35 @@ async def on_reaction_add(reaction, user):
     if reaction.emoji == "➕" and reaction.message.channel.id != VERIFY_CHANNEL_ID:
         message = reaction.message
 
+        # 檢查這條訊息是否已經被複製過
+        if message.id in copied_messages:
+            print(f"⚠️ 訊息 {message.id} 已經複製過，忽略。")
+            return
+
         # 建立 webhook 模擬玩家發送
         webhook = await message.channel.create_webhook(name=user.display_name)
-        await webhook.send(
+        new_msg = await webhook.send(
             content=message.content,
             username=user.display_name,
-            avatar_url=user.avatar.url if user.avatar else None
+            avatar_url=user.avatar.url if user.avatar else None,
+            wait=True  # 等待訊息物件
         )
         
         await webhook.delete()
 
-        # 在複製的訊息上也加 ➕
-        async for msg in message.channel.history(limit=1):
-            await msg.add_reaction("➕")
+        # 複製訊息加上 ➕
+        await new_msg.add_reaction("➕")
+
+        # 如果有上一個複製訊息，把它的 ➕ 移除
+        if last_copied_message:
+            try:
+                await last_copied_message.clear_reaction("➕")
+            except Exception as e:
+                print(f"刪除上一個 ➕ 出錯: {e}")
+
+        # 更新記錄
+        last_copied_message = new_msg
+        copied_messages.add(message.id)  # 標記這條訊息已被複製
 
 keep_alive()
 
