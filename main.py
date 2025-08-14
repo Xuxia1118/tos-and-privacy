@@ -7,6 +7,25 @@ intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
 
+with open('config.json', 'r', encoding='utf-8') as f:
+    config = json.load(f)
+
+intents = discord.Intents.default()
+intents.messages = True
+client = discord.Client(intents=intents)
+
+@client.event
+async def on_ready():
+    print(f'已登入：{client.user}')
+
+@client.event
+async def on_member_join(member):
+    channel = client.get_channel(config['welcome_channel_id'])
+    if channel:
+        await channel.send(config['welcome_message'].replace("{user}", member.mention))
+
+client.run("TOKEN")
+
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 ROLE_NAME = "乖寶寶"
