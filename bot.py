@@ -2,6 +2,7 @@ import os
 import discord
 from discord.ext import commands
 from flask import Flask, render_template_string, request
+import threading
 
 # 讀取 TOKEN（Railway 環境變數）
 TOKEN = os.getenv("TOKEN")
@@ -24,7 +25,7 @@ config = {
     "reply_text": "預設回覆"
 }
 
-# Flask 後台頁面
+# Flask 後台頁面 HTML
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html>
@@ -65,15 +66,10 @@ async def on_ready():
 async def on_message(message):
     global last_message_id
 
-    # 防止機器人自己觸發自己
     if message.author == bot.user:
         return
-
-    # 防止重複回覆同一訊息
     if message.id == last_message_id:
         return
-
-    # 如果設定了指定頻道才觸發
     if config["reply_channel_id"] and message.channel.id == config["reply_channel_id"]:
         await message.channel.send(config["reply_text"])
         last_message_id = message.id
@@ -82,10 +78,9 @@ async def on_message(message):
 
 # 啟動 Flask + Discord
 if __name__ == "__main__":
-    import threading
-
     def run_flask():
-        app.run(host="0.0.0.0", port=8080)
+        port = int(os.environ.get("PORT", 8080))  # Railway 分配的 Port
+        app.run(host="0.0.0.0", port=port)
 
     threading.Thread(target=run_flask).start()
     bot.run(TOKEN)
