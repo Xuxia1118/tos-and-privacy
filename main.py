@@ -25,7 +25,7 @@ async def on_member_join(member):
     if channel:
         await channel.send(config['welcome_message'].replace("{user}", member.mention))
 
-client.run("TOKEN")
+client.run(os.environ["TOKEN"])
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
