@@ -4,10 +4,10 @@ from discord.ext import commands
 from flask import Flask, render_template_string, request
 import threading
 
-# 讀取 TOKEN（Railway 環境變數）
+# 讀取 TOKEN（環境變數）
 TOKEN = os.getenv("TOKEN")
 
-# Discord Bot 初始化
+# 初始化 Discord Bot
 intents = discord.Intents.default()
 intents.messages = True
 intents.message_content = True
@@ -25,7 +25,7 @@ config = {
     "reply_text": "預設回覆"
 }
 
-# Flask 後台頁面 HTML
+# 後台 HTML
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html>
@@ -57,10 +57,10 @@ def settings():
         reply_text=config["reply_text"]
     )
 
-# Discord Bot 事件
+# Discord 事件
 @bot.event
 async def on_ready():
-    print(f"Bot 已啟動：{bot.user}")
+    print(f"✅ Bot 已啟動：{bot.user}")
 
 @bot.event
 async def on_message(message):
@@ -68,19 +68,20 @@ async def on_message(message):
 
     if message.author == bot.user:
         return
+
     if message.id == last_message_id:
         return
+
     if config["reply_channel_id"] and message.channel.id == config["reply_channel_id"]:
         await message.channel.send(config["reply_text"])
         last_message_id = message.id
 
     await bot.process_commands(message)
 
-# 啟動 Flask + Discord
-if __name__ == "__main__":
-    def run_flask():
-        port = int(os.environ.get("PORT", 8080))  # Railway 分配的 Port
-        app.run(host="0.0.0.0", port=port)
+# Flask 維持運行
+def run_flask():
+    app.run(host="0.0.0.0", port=8080)
 
+if __name__ == "__main__":
     threading.Thread(target=run_flask).start()
     bot.run(TOKEN)
