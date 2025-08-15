@@ -1,13 +1,12 @@
 from flask import Flask, request, render_template_string, redirect
 import os
 from threading import Thread
-from config_manager import config_manager 
+import config_manager  # ✅ 直接 import 檔案
 
 app = Flask(__name__)
 
 @app.route("/settings", methods=["GET", "POST"])
 def settings():
-    # 讀取最新設定
     config = config_manager.load_config()
 
     if request.method == "POST":
@@ -16,7 +15,7 @@ def settings():
             "welcome_channel_id": int(request.form.get("welcome_channel_id", config.get("welcome_channel_id", 0))),
             "welcome_message": request.form.get("welcome_message", config.get("welcome_message", ""))
         }
-        config_manager.update_config(new_data)  # 使用 update 而不是 save
+        config_manager.save_config(new_data)
         return redirect("/settings")
 
     html = """
@@ -28,17 +27,14 @@ def settings():
         <input type="submit" value="儲存">
     </form>
     """
-    return render_template_string(
-        html,
-        prefix=config.get("prefix", "!"),
-        welcome_channel_id=config.get("welcome_channel_id", 0),
-        welcome_message=config.get("welcome_message", "")
-    )
+    return render_template_string(html,
+                                  prefix=config.get("prefix", "!"),
+                                  welcome_channel_id=config.get("welcome_channel_id", 0),
+                                  welcome_message=config.get("welcome_message", ""))
 
 @app.route("/")
 def home():
-    # 直接跳轉到設定頁面
-    return redirect("/settings")
+    return "Bot 後台運作中 🚀"
 
 def keep_alive():
     def run():
