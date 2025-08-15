@@ -81,11 +81,12 @@ def login():
     if not (CLIENT_ID and REDIRECT_URI):
         return "尚未設定 DISCORD_CLIENT_ID / DISCORD_REDIRECT_URI", 500
 
+    # 保留原始 scope 讓 urlencode 自動轉成 %20
     params = {
         "client_id": CLIENT_ID,
         "redirect_uri": REDIRECT_URI,
         "response_type": "code",
-        "scope": OAUTH_SCOPE.replace(" ", "+")  # Discord OAuth2 scope
+        "scope": OAUTH_SCOPE
     }
     auth_url = f"{DISCORD_API_BASE}/oauth2/authorize?{urlencode(params)}"
     return redirect(auth_url)
@@ -99,7 +100,7 @@ def callback():
     if not (CLIENT_ID and CLIENT_SECRET and REDIRECT_URI):
         return "尚未設定 DISCORD_CLIENT_ID / DISCORD_CLIENT_SECRET / DISCORD_REDIRECT_URI", 500
 
-    # 用 code 換取 token
+    # 用 code 換取 token（scope 參數移除）
     token_resp = post_form(
         f"{DISCORD_API_BASE}/oauth2/token",
         {
@@ -107,10 +108,11 @@ def callback():
             "client_secret": CLIENT_SECRET,
             "grant_type": "authorization_code",
             "code": code,
-            "redirect_uri": REDIRECT_URI,
-            "scope": OAUTH_SCOPE,
+            "redirect_uri": REDIRECT_URI
         }
     )
+
+    print("Token response:", token_resp)  # debug log
 
     access_token = token_resp.get("access_token")
     if not access_token:
