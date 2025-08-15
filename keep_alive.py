@@ -8,20 +8,13 @@ app = Flask(__name__)
 # 設定頁面
 @app.route("/settings", methods=["GET", "POST"])
 def settings():
-    try:
-        with open("config.json", "r", encoding="utf-8") as f:
-            config = json.load(f)
-    except FileNotFoundError:
-        config = {"prefix": "!", "welcome_channel_id": 0, "welcome_message": ""}
-
     if request.method == "POST":
-        config["prefix"] = request.form.get("prefix", config.get("prefix", "!"))
-        config["welcome_channel_id"] = int(request.form.get("welcome_channel_id", config.get("welcome_channel_id", 0)))
-        config["welcome_message"] = request.form.get("welcome_message", config.get("welcome_message", ""))
-
-        with open("config.json", "w", encoding="utf-8") as f:
-            json.dump(config, f, ensure_ascii=False, indent=4)
-
+        new_data = {
+            "prefix": request.form.get("prefix", config_manager.config_data["prefix"]),
+            "welcome_channel_id": int(request.form.get("welcome_channel_id", config_manager.config_data["welcome_channel_id"])),
+            "welcome_message": request.form.get("welcome_message", config_manager.config_data["welcome_message"])
+        }
+        config_manager.update_config(new_data)
         return redirect("/settings")
 
     html = """
@@ -33,12 +26,10 @@ def settings():
         <input type="submit" value="儲存">
     </form>
     """
-    return render_template_string(
-        html,
-        prefix=config.get("prefix", "!"),
-        welcome_channel_id=config.get("welcome_channel_id", 0),
-        welcome_message=config.get("welcome_message", "")
-    )
+    return render_template_string(html,
+                                  prefix=config_manager.config_data["prefix"],
+                                  welcome_channel_id=config_manager.config_data["welcome_channel_id"],
+                                  welcome_message=config_manager.config_data["welcome_message"])
 
 @app.route("/")
 def home():
