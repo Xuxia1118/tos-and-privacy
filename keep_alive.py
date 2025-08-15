@@ -1,5 +1,6 @@
 from flask import Flask, request, render_template_string, redirect
 import json
+import os
 from threading import Thread
 
 app = Flask(__name__)
@@ -7,7 +8,6 @@ app = Flask(__name__)
 # 設定頁面
 @app.route("/settings", methods=["GET", "POST"])
 def settings():
-    # 讀取現有設定
     try:
         with open("config.json", "r", encoding="utf-8") as f:
             config = json.load(f)
@@ -19,7 +19,6 @@ def settings():
         config["welcome_channel_id"] = int(request.form.get("welcome_channel_id", config.get("welcome_channel_id", 0)))
         config["welcome_message"] = request.form.get("welcome_message", config.get("welcome_message", ""))
 
-        # 寫入 config.json
         with open("config.json", "w", encoding="utf-8") as f:
             json.dump(config, f, ensure_ascii=False, indent=4)
 
@@ -34,10 +33,12 @@ def settings():
         <input type="submit" value="儲存">
     </form>
     """
-    return render_template_string(html,
-                                  prefix=config.get("prefix", "!"),
-                                  welcome_channel_id=config.get("welcome_channel_id", 0),
-                                  welcome_message=config.get("welcome_message", ""))
+    return render_template_string(
+        html,
+        prefix=config.get("prefix", "!"),
+        welcome_channel_id=config.get("welcome_channel_id", 0),
+        welcome_message=config.get("welcome_message", "")
+    )
 
 @app.route("/")
 def home():
@@ -45,6 +46,8 @@ def home():
 
 def keep_alive():
     def run():
-        app.run(host="0.0.0.0", port=8080)
+        port = int(os.environ.get("PORT", 8080))  # Railway 要讀取 PORT
+        app.run(host="0.0.0.0", port=port)
+
     t = Thread(target=run)
     t.start()
