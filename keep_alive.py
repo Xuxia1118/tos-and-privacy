@@ -1,7 +1,7 @@
 from flask import Flask, request, render_template_string, redirect
 import os
 from threading import Thread
-import config_manager  # ✅ 直接 import 檔案
+import config_manager  # ✅ 管理設定檔
 
 app = Flask(__name__)
 
@@ -27,10 +27,12 @@ def settings():
         <input type="submit" value="儲存">
     </form>
     """
-    return render_template_string(html,
-                                  prefix=config.get("prefix", "!"),
-                                  welcome_channel_id=config.get("welcome_channel_id", 0),
-                                  welcome_message=config.get("welcome_message", ""))
+    return render_template_string(
+        html,
+        prefix=config.get("prefix", "!"),
+        welcome_channel_id=config.get("welcome_channel_id", 0),
+        welcome_message=config.get("welcome_message", "")
+    )
 
 @app.route("/")
 def home():
