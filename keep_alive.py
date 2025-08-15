@@ -1,45 +1,50 @@
 from flask import Flask, request, render_template_string, redirect
-from threading import Thread
 import json
-import os
+from threading import Thread
 
-app = Flask('')
+app = Flask(__name__)
 
-@app.route('/')
-def home():
-    # 如果 config.json 不存在，先建立一個空的
-    if not os.path.exists('config.json'):
-        with open('config.json', 'w', encoding='utf-8') as f:
-            json.dump({}, f)
+# 設定頁面
+@app.route("/settings", methods=["GET", "POST"])
+def settings():
+    # 讀取現有設定
+    try:
+        with open("config.json", "r", encoding="utf-8") as f:
+            config = json.load(f)
+    except FileNotFoundError:
+        config = {"prefix": "!", "welcome_channel_id": 0, "welcome_message": ""}
 
-    with open('config.json', 'r', encoding='utf-8') as f:
-        config = json.load(f)
+    if request.method == "POST":
+        config["prefix"] = request.form.get("prefix", config.get("prefix", "!"))
+        config["welcome_channel_id"] = int(request.form.get("welcome_channel_id", config.get("welcome_channel_id", 0)))
+        config["welcome_message"] = request.form.get("welcome_message", config.get("welcome_message", ""))
 
-    html = f"""
+        # 寫入 config.json
+        with open("config.json", "w", encoding="utf-8") as f:
+            json.dump(config, f, ensure_ascii=False, indent=4)
+
+        return redirect("/settings")
+
+    html = """
     <h1>Bot 設定</h1>
-    <form action="/save" method="post">
-        Prefix: <input type="text" name="prefix" value="{config.get('prefix', '')}"><br>
-        歡迎頻道ID: <input type="text" name="welcome_channel_id" value="{config.get('welcome_channel_id', '')}"><br>
-        歡迎訊息: <input type="text" name="welcome_message" value="{config.get('welcome_message', '')}"><br>
+    <form method="POST">
+        Prefix: <input type="text" name="prefix" value="{{prefix}}"><br><br>
+        歡迎頻道ID: <input type="text" name="welcome_channel_id" value="{{welcome_channel_id}}"><br><br>
+        歡迎訊息: <textarea name="welcome_message">{{welcome_message}}</textarea><br><br>
         <input type="submit" value="儲存">
     </form>
     """
-    return render_template_string(html)
+    return render_template_string(html,
+                                  prefix=config.get("prefix", "!"),
+                                  welcome_channel_id=config.get("welcome_channel_id", 0),
+                                  welcome_message=config.get("welcome_message", ""))
 
-@app.route('/save', methods=['POST'])
-def save():
-    new_config = {
-        "prefix": request.form.get('prefix', ''),
-        "welcome_channel_id": int(request.form.get('welcome_channel_id', '0') or 0),
-        "welcome_message": request.form.get('welcome_message', '')
-    }
-    with open('config.json', 'w', encoding='utf-8') as f:
-        json.dump(new_config, f, ensure_ascii=False, indent=4)
-    return redirect('/')
-
-def run():
-    app.run(host='0.0.0.0', port=8080)
+@app.route("/")
+def home():
+    return "Bot 後台運作中 🚀"
 
 def keep_alive():
+    def run():
+        app.run(host="0.0.0.0", port=8080)
     t = Thread(target=run)
     t.start()
