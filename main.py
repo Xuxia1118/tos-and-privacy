@@ -1,9 +1,9 @@
 import os
 import discord
-import json
 import asyncio
 from discord.ext import commands
 from keep_alive import keep_alive
+import config_manager  
 
 # 啟動 Web 服務保持運行
 keep_alive()
@@ -12,12 +12,10 @@ intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
 
-# 讀取 config.json
-config_manager.load_config()
-
-intents = discord.Intents.default()
-bot = commands.Bot(command_prefix=lambda bot, msg: config_manager.config_data["prefix"], intents=intents)
-
+bot = commands.Bot(
+    command_prefix=lambda bot, msg: config_manager.load_config().get("prefix", "!"),
+    intents=intents
+)
 
 ROLE_NAME = "乖寶寶"
 VERIFY_CHANNEL_ID = 1398732880909434880
@@ -32,9 +30,10 @@ async def on_ready():
 
 @bot.event
 async def on_member_join(member):
-    channel = bot.get_channel(config['welcome_channel_id'])
+    cfg = config_manager.load_config()
+    channel = bot.get_channel(cfg.get('welcome_channel_id'))
     if channel:
-        await channel.send(config['welcome_message'].replace("{user}", member.mention))
+        await channel.send(cfg.get('welcome_message', '').replace("{user}", member.mention))
 
 @bot.command()
 async def ping(ctx):
@@ -47,7 +46,6 @@ async def on_message(message):
     if message.author.bot:
         return
 
-    # 驗證頻道處理
     if message.channel.id == VERIFY_CHANNEL_ID:
         if message.content.strip() == TARGET_MESSAGE:
             role = discord.utils.get(message.guild.roles, name=ROLE_NAME)
@@ -62,7 +60,6 @@ async def on_message(message):
             await message.channel.send(f"{message.author.mention} ⚠️ 請輸入正確的驗證訊息。")
             await message.add_reaction("❌")
     else:
-        # 檢查上一則訊息是否相同
         try:
             history = [msg async for msg in message.channel.history(limit=2)]
             if len(history) == 2 and history[1].content == message.content:
@@ -109,5 +106,4 @@ async def on_reaction_add(reaction, user):
         last_copied_message = new_msg
         copied_messages.add(message.id)
 
-# 啟動機器人 (用環境變數 TOKEN)
 bot.run(os.getenv("TOKEN"))
