@@ -5,10 +5,14 @@ import asyncio
 from discord.ext import commands
 from keep_alive import keep_alive
 
+# 啟動 Web 服務保持運行
+keep_alive()
+
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
 
+# 讀取 config.json
 with open('config.json', 'r', encoding='utf-8') as f:
     config = json.load(f)
 
@@ -104,8 +108,5 @@ async def on_reaction_add(reaction, user):
         last_copied_message = new_msg
         copied_messages.add(message.id)
 
-# 先啟動 Web 服務保持運行
-keep_alive()
-
-# 啟動機器人
-bot.run(os.environ["TOKEN"])
+# 啟動機器人 (用環境變數 TOKEN)
+bot.run(os.getenv("TOKEN"))
