@@ -2,22 +2,17 @@ import json
 import os
 
 CONFIG_FILE = "config.json"
-config_data = {}
 
 def load_config():
-    global config_data
+    """每次呼叫都重新讀取檔案"""
     if os.path.exists(CONFIG_FILE):
         with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-            config_data = json.load(f)
-    else:
-        config_data = {}
-    return config_data
+            return json.load(f)
+    return {}
 
 def save_config(new_data):
-    global config_data
-    config_data.update(new_data)
+    """覆蓋或更新設定"""
+    config = load_config()  # 先讀取現有設定
+    config.update(new_data) # 更新
     with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-        json.dump(config_data, f, ensure_ascii=False, indent=4)
-
-# 啟動時先載入一次
-load_config()
+        json.dump(config, f, ensure_ascii=False, indent=4)
