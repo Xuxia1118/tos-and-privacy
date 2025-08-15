@@ -2,19 +2,22 @@ from flask import Flask, request, render_template_string, redirect
 import json
 import os
 from threading import Thread
+import config_manager  
 
 app = Flask(__name__)
 
-# 設定頁面
 @app.route("/settings", methods=["GET", "POST"])
 def settings():
+    # 每次載入頁面都重新讀取最新設定
+    config = config_manager.load_config()
+
     if request.method == "POST":
         new_data = {
-            "prefix": request.form.get("prefix", config_manager.config_data["prefix"]),
-            "welcome_channel_id": int(request.form.get("welcome_channel_id", config_manager.config_data["welcome_channel_id"])),
-            "welcome_message": request.form.get("welcome_message", config_manager.config_data["welcome_message"])
+            "prefix": request.form.get("prefix", config.get("prefix", "!")),
+            "welcome_channel_id": int(request.form.get("welcome_channel_id", config.get("welcome_channel_id", 0))),
+            "welcome_message": request.form.get("welcome_message", config.get("welcome_message", ""))
         }
-        config_manager.update_config(new_data)
+        config_manager.save_config(new_data)  # 即時寫入
         return redirect("/settings")
 
     html = """
@@ -27,9 +30,9 @@ def settings():
     </form>
     """
     return render_template_string(html,
-                                  prefix=config_manager.config_data["prefix"],
-                                  welcome_channel_id=config_manager.config_data["welcome_channel_id"],
-                                  welcome_message=config_manager.config_data["welcome_message"])
+                                  prefix=config.get("prefix", "!"),
+                                  welcome_channel_id=config.get("welcome_channel_id", 0),
+                                  welcome_message=config.get("welcome_message", ""))
 
 @app.route("/")
 def home():
@@ -37,7 +40,7 @@ def home():
 
 def keep_alive():
     def run():
-        port = int(os.environ.get("PORT", 8080))  # Railway 要讀取 PORT
+        port = int(os.environ.get("PORT", 8080))
         app.run(host="0.0.0.0", port=port)
 
     t = Thread(target=run)
