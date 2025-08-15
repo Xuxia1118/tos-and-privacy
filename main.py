@@ -13,10 +13,11 @@ intents.message_content = True
 intents.members = True
 
 # 讀取 config.json
-with open('config.json', 'r', encoding='utf-8') as f:
-    config = json.load(f)
+config_manager.load_config()
 
-bot = commands.Bot(command_prefix="!", intents=intents)
+intents = discord.Intents.default()
+bot = commands.Bot(command_prefix=lambda bot, msg: config_manager.config_data["prefix"], intents=intents)
+
 
 ROLE_NAME = "乖寶寶"
 VERIFY_CHANNEL_ID = 1398732880909434880
