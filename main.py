@@ -35,7 +35,7 @@ def discord_callback():
 
     return "OAuth Success! You can close this page."
 
-keep_alive(app)  # 傳入 Flask app
+keep_alive()  # 傳入 Flask app
 
 # Discord bot 設定
 intents = discord.Intents.default()
