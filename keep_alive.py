@@ -1,62 +1,73 @@
-# keep_alive.py
-from flask import Flask, request, render_template_string, redirect
+from flask import Flask, redirect, request, session, url_for
 import os
+import requests
 from threading import Thread
-import config_manager  
 
 app = Flask(__name__)
+app.secret_key = os.urandom(24)  # 必須有 secret_key 才能用 session
 
-@app.route("/settings", methods=["GET", "POST"])
-def settings():
-    config = config_manager.load_config()
-
-    if request.method == "POST":
-        # 防止輸入空值覆蓋設定
-        new_data = {
-            "prefix": request.form.get("prefix", config.get("prefix", "!")).strip(),
-            "welcome_channel_id": int(request.form.get("welcome_channel_id", config.get("welcome_channel_id", 0))),
-            "welcome_message": request.form.get("welcome_message", config.get("welcome_message", "")).strip()
-        }
-        config_manager.save_config(new_data)
-        return redirect("/settings")
-
-    html = """
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset="UTF-8">
-        <title>Bot 設定頁面</title>
-    </head>
-    <body>
-        <h1>Bot 設定</h1>
-        <form method="POST">
-            Prefix: <input type="text" name="prefix" value="{{prefix}}"><br><br>
-            歡迎頻道ID: <input type="text" name="welcome_channel_id" value="{{welcome_channel_id}}"><br><br>
-            歡迎訊息: <textarea name="welcome_message" rows="4" cols="40">{{welcome_message}}</textarea><br><br>
-            <input type="submit" value="儲存">
-        </form>
-        <br>
-        <a href="/">回首頁</a>
-    </body>
-    </html>
-    """
-    return render_template_string(
-        html,
-        prefix=config.get("prefix", "!"),
-        welcome_channel_id=config.get("welcome_channel_id", 0),
-        welcome_message=config.get("welcome_message", "")
-    )
+CLIENT_ID = os.getenv("DISCORD_CLIENT_ID")
+CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET")
+REDIRECT_URI = os.getenv("DISCORD_REDIRECT_URI")
+OAUTH_SCOPE = "identify guilds"
 
 @app.route("/")
-def home():
-    return """
-    <h1>Bot 後台運作中 🚀</h1>
-    <p><a href='/settings'>前往設定頁面</a></p>
-    """
+def index():
+    if "discord_user" in session:
+        user = session["discord_user"]
+        return f"""
+        <h1>歡迎, {user['username']}#{user['discriminator']}</h1>
+        <img src="https://cdn.discordapp.com/avatars/{user['id']}/{user['avatar']}.png" width="100"><br>
+        <a href="/logout">登出</a>
+        """
+    return '<a href="/login">使用 Discord 登入</a>'
+
+@app.route("/login")
+def login():
+    return redirect(
+        f"https://discord.com/api/oauth2/authorize?client_id={CLIENT_ID}&redirect_uri={REDIRECT_URI}&response_type=code&scope={OAUTH_SCOPE}"
+    )
+
+@app.route("/callback")
+def callback():
+    code = request.args.get("code")
+    if not code:
+        return "沒有授權碼", 400
+
+    # 換取 access token
+    token_url = "https://discord.com/api/oauth2/token"
+    data = {
+        "client_id": CLIENT_ID,
+        "client_secret": CLIENT_SECRET,
+        "grant_type": "authorization_code",
+        "code": code,
+        "redirect_uri": REDIRECT_URI,
+        "scope": OAUTH_SCOPE
+    }
+    headers = {"Content-Type": "application/x-www-form-urlencoded"}
+    token_response = requests.post(token_url, data=data, headers=headers)
+    token_json = token_response.json()
+    access_token = token_json.get("access_token")
+
+    if not access_token:
+        return f"授權失敗: {token_json}", 400
+
+    # 取得使用者資料
+    user_info = requests.get(
+        "https://discord.com/api/users/@me",
+        headers={"Authorization": f"Bearer {access_token}"}
+    ).json()
+
+    session["discord_user"] = user_info
+    return redirect(url_for("index"))
+
+@app.route("/logout")
+def logout():
+    session.pop("discord_user", None)
+    return redirect(url_for("index"))
 
 def keep_alive():
     def run():
-        port = int(os.environ.get("PORT", 8080))  # Railway 會自動設定 PORT
-        app.run(host="0.0.0.0", port=port, debug=False)
-
+        port = int(os.environ.get("PORT", 8080))
+        app.run(host="0.0.0.0", port=port)
     Thread(target=run).start()
