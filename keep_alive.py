@@ -1,4 +1,3 @@
-# keep_alive.py
 import os
 import json
 from threading import Thread
@@ -6,28 +5,20 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 
-from flask import Flask, redirect, request, session, url_for, render_template_string, abort
+from flask import Flask, redirect, request, session, url_for, render_template_string
 import config_manager  # 你的設定檔管理器
 
-# ──────────────────────────────────────────────────────────
-# Flask APP
-# ──────────────────────────────────────────────────────────
 app = Flask(__name__)
+app.secret_key = os.getenv("SECRET_KEY", os.urandom(24))  
 
-# 用於 session 加密；優先使用環境變數 SECRET_KEY，否則隨機產生（重啟會讓登入失效）
-app.secret_key = os.getenv("SECRET_KEY", os.urandom(24))
-
-# Discord OAuth2 相關設定（請在 Railway 的 Variables 設置）
-CLIENT_ID = os.getenv("DISCORD_CLIENT_ID", "")
-CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET", "")
-REDIRECT_URI = os.getenv("DISCORD_REDIRECT_URI", "")
-OAUTH_SCOPE = "identify guilds"
-
+# Discord OAuth2 設定
+CLIENT_ID = os.getenv("DISCORD_CLIENT_ID")
+CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET")
+REDIRECT_URI = os.getenv("DISCORD_REDIRECT_URI")  
+OAUTH_SCOPE = "identify guilds email"
 DISCORD_API_BASE = "https://discord.com/api"
 
-# ──────────────────────────────────────────────────────────
-# 小工具：HTTP 請求（僅用標準庫）
-# ──────────────────────────────────────────────────────────
+# ──────────── 小工具 ────────────
 def post_form(url: str, data: dict) -> dict:
     body = urlencode(data).encode("utf-8")
     req = Request(url, data=body, headers={"Content-Type": "application/x-www-form-urlencoded"})
@@ -49,9 +40,7 @@ def get_json(url: str, headers: dict) -> dict:
     except URLError as e:
         return {"error": "URLError", "details": str(e)}
 
-# ──────────────────────────────────────────────────────────
-# 路由
-# ──────────────────────────────────────────────────────────
+# ──────────── 路由 ────────────
 @app.route("/")
 def index():
     if "discord_user" in session:
@@ -62,17 +51,13 @@ def index():
             if avatar_hash else "https://cdn.discordapp.com/embed/avatars/0.png"
         )
         return f"""
-        <h1>歡迎，{user.get('username')}#{user.get('discriminator', '0000')}</h1>
+        <h1>歡迎，{user.get('username')}#{user.get('discriminator','0000')}</h1>
         <img src="{avatar_url}" width="96" height="96" style="border-radius:50%"><br><br>
         <a href="/settings">前往設定頁</a> |
         <a href="/guilds">查看伺服器清單</a> |
         <a href="/logout">登出</a>
         """
-    return """
-    <h1>Bot 後台</h1>
-    <p>請先登入 Discord 以管理設定。</p>
-    <a href="/login">使用 Discord 登入</a>
-    """
+    return '<h1>Bot 後台</h1><p>請先登入 Discord 以管理設定。</p><a href="/login">使用 Discord 登入</a>'
 
 @app.route("/health")
 def health():
@@ -127,7 +112,7 @@ def callback():
         return f"取得使用者資料失敗：{user}", 400
 
     session["discord_user"] = user
-    session["access_token"] = access_token  # 可用於後續 API 呼叫
+    session["access_token"] = access_token
     return redirect(url_for("index"))
 
 @app.route("/logout")
@@ -156,7 +141,7 @@ def guilds():
         items.append(f"<li>{name} (ID: {gid}) — perms: {perm}</li>")
     return "<h1>你的伺服器</h1><ul>" + "".join(items) + "</ul><a href='/'>返回</a>"
 
-# ── 設定頁（需要登入）
+# 設定頁
 @app.route("/settings", methods=["GET", "POST"])
 def settings():
     if "discord_user" not in session:
@@ -165,7 +150,6 @@ def settings():
     config = config_manager.load_config()
 
     if request.method == "POST":
-        # 防止空白覆蓋：使用舊值當預設
         new_data = {
             "prefix": (request.form.get("prefix") or config.get("prefix", "!")).strip(),
             "welcome_channel_id": int(request.form.get("welcome_channel_id") or config.get("welcome_channel_id", 0)),
@@ -181,7 +165,7 @@ def settings():
         <meta charset="UTF-8">
         <title>Bot 設定頁</title>
         <style>
-            body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto; padding: 24px; }
+            body { font-family: ui-sans-serif, system-ui; padding: 24px; }
             .card { max-width: 680px; margin: 0 auto; padding: 20px; border: 1px solid #e5e7eb; border-radius: 12px; }
             label { display:block; margin:.5rem 0 .25rem; font-weight:600; }
             input[type="text"], textarea { width:100%; padding:.6rem .8rem; border:1px solid #d1d5db; border-radius:8px; }
@@ -221,10 +205,8 @@ def settings():
         welcome_message=config.get("welcome_message", ""),
     )
 
-
 def keep_alive():
     def run():
-        port = int(os.environ.get("PORT", 8080))  # Railway 會提供 PORT
-        # debug=False 避免多進程重啟
+        port = int(os.environ.get("PORT", 8080))
         app.run(host="0.0.0.0", port=port, debug=False)
     Thread(target=run, daemon=True).start()
