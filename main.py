@@ -6,7 +6,7 @@ from flask import Flask, request
 import requests
 
 #--- Flask app ---
-app = Flask(name)
+app = Flask(__name__)
 
 @app.route("/callback")
 def discord_callback():
