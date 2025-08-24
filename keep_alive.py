@@ -22,7 +22,7 @@ CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET", "")
 REDIRECT_URI = os.getenv("DISCORD_REDIRECT_URI", "")
 OAUTH_SCOPE = "identify guilds email"
 
-DISCORD_API_BASE = "https://tos-and-privacy-1ejbsj6cv-xuxia1118s-projects.vercel.app"
+DISCORD_API_BASE = "https://discord.com/channels/@me"
 
 # ──────────────────────────────────────────────────────────
 # 小工具：HTTP 請求
