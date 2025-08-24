@@ -1,232 +1,60 @@
-# main.py  —  Single-File: Flask (OAuth) + Discord Bot
 import os
-import json
-import logging
-from threading import Thread
-from urllib.parse import urlencode
-
-import requests
-from flask import Flask, redirect, request, session, url_for, render_template_string
-
 import discord
 from discord.ext import commands
-import config_manager  # 你的設定檔管理器
+from keep_alive import keep_alive
+import config_manager
+import asyncio
+from flask import Flask, request, redirect
+import requests
 
-# ──────────────────────────────────────────────────────────
-# 基本設定
-# ──────────────────────────────────────────────────────────
-DISCORD_API_BASE = "https://discord.com/api"
-CLIENT_ID = os.getenv("DISCORD_CLIENT_ID", "")
-CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET", "")
-REDIRECT_URI = os.getenv("DISCORD_REDIRECT_URI", "")
-OAUTH_SCOPE = "identify guilds email"
-
-discord.utils.setup_logging(level=logging.INFO, root=False)
-
-# ──────────────────────────────────────────────────────────
-# Flask APP
-# ──────────────────────────────────────────────────────────
+# 啟動 Flask Web 服務保持運行
 app = Flask(__name__)
-app.secret_key = os.getenv("SECRET_KEY", os.urandom(24))
-
-def post_form(url: str, data: dict) -> dict:
-    try:
-        r = requests.post(url, data=data, headers={"Content-Type": "application/x-www-form-urlencoded"}, timeout=15)
-        body = r.json() if r.headers.get("content-type", "").startswith("application/json") else {"raw": r.text}
-        if r.status_code >= 400:
-            return {"error": f"HTTP {r.status_code}", "details": body}
-        return body
-    except requests.RequestException as e:
-        return {"error": "RequestException", "details": str(e)}
-
-def get_json(url: str, headers: dict) -> dict:
-    try:
-        r = requests.get(url, headers=headers, timeout=15)
-        body = r.json() if r.headers.get("content-type", "").startswith("application/json") else {"raw": r.text}
-        if r.status_code >= 400:
-            return {"error": f"HTTP {r.status_code}", "details": body}
-        return body
-    except requests.RequestException as e:
-        return {"error": "RequestException", "details": str(e)}
-
-@app.route("/")
-def index():
-    if "discord_user" in session:
-        user = session["discord_user"]
-        avatar_hash = user.get("avatar")
-        avatar_url = (
-            f"https://cdn.discordapp.com/avatars/{user['id']}/{avatar_hash}.png"
-            if avatar_hash else "https://cdn.discordapp.com/embed/avatars/0.png"
-        )
-        disc = user.get("discriminator") or "0000"
-        return f"""
-        <h1>歡迎，{user.get('username')}#{disc}</h1>
-        <img src="{avatar_url}" width="96" height="96" style="border-radius:50%"><br><br>
-        <a href="/settings">前往設定頁</a> |
-        <a href="/guilds">查看伺服器清單</a> |
-        <a href="/logout">登出</a>
-        """
-    return """
-    <h1>Bot 後台</h1>
-    <p>請先登入 Discord 以管理設定。</p>
-    <a href="/login">使用 Discord 登入</a>
-    """
-
-@app.route("/health")
-def health():
-    return {"status": "ok"}, 200
-
-@app.route("/login")
-def login():
-    if not (CLIENT_ID and REDIRECT_URI):
-        return "尚未設定 DISCORD_CLIENT_ID / DISCORD_REDIRECT_URI", 500
-    params = {
-        "client_id": CLIENT_ID,
-        "redirect_uri": REDIRECT_URI,
-        "response_type": "code",
-        "scope": OAUTH_SCOPE,
-    }
-    auth_url = f"{DISCORD_API_BASE}/oauth2/authorize?{urlencode(params)}"
-    return redirect(auth_url)
 
 @app.route("/callback")
-def callback():
+def discord_callback():
     code = request.args.get("code")
     if not code:
-        return "缺少授權碼（code）", 400
-    if not (CLIENT_ID and CLIENT_SECRET and REDIRECT_URI):
-        return "尚未設定 DISCORD_CLIENT_ID / DISCORD_CLIENT_SECRET / DISCORD_REDIRECT_URI", 500
+        return "Missing code", 400
 
-    token_resp = post_form(
-        f"{DISCORD_API_BASE}/oauth2/token",
-        {
-            "client_id": CLIENT_ID,
-            "client_secret": CLIENT_SECRET,
-            "grant_type": "authorization_code",
-            "code": code,
-            "redirect_uri": REDIRECT_URI,
-        },
-    )
-    print("Token response:", token_resp)
-    access_token = token_resp.get("access_token")
-    if not access_token:
-        return f"授權失敗：{json.dumps(token_resp, ensure_ascii=False)}", 400
+    # Discord OAuth 交換 Token
+    data = {
+        "client_id": os.getenv("DISCORD_CLIENT_ID"),
+        "client_secret": os.getenv("DISCORD_CLIENT_SECRET"),
+        "grant_type": "authorization_code",
+        "code": code,
+        "redirect_uri": os.getenv("DISCORD_REDIRECT_URI"),
+    }
+    headers = {"Content-Type": "application/x-www-form-urlencoded"}
 
-    user = get_json(
-        f"{DISCORD_API_BASE}/users/@me",
-        headers={"Authorization": f"Bearer {access_token}"},
-    )
-    if "id" not in user:
-        return f"取得使用者資料失敗：{json.dumps(user, ensure_ascii=False)}", 400
+    r = requests.post("https://discord.com/api/oauth2/token", data=data, headers=headers)
+    if r.status_code != 200:
+        return f"Token exchange failed: {r.text}", 400
 
-    session["discord_user"] = user
-    session["access_token"] = access_token
-    return redirect(url_for("index"))
+    tokens = r.json()
+    # 這裡你可以存取 tokens["access_token"] 做後續處理
 
-@app.route("/logout")
-def logout():
-    session.pop("discord_user", None)
-    session.pop("access_token", None)
-    return redirect(url_for("index"))
+    return "OAuth Success! You can close this page."
 
-@app.route("/guilds")
-def guilds():
-    if "access_token" not in session:
-        return redirect(url_for("login"))
-    guilds = get_json(
-        f"{DISCORD_API_BASE}/users/@me/guilds",
-        headers={"Authorization": f"Bearer {session['access_token']}"},
-    )
-    if isinstance(guilds, dict) and "error" in guilds:
-        return f"取得伺服器失敗：{json.dumps(guilds, ensure_ascii=False)}", 400
-    items = []
-    for g in guilds:
-        name = g.get("name", "Unknown")
-        gid = g.get("id")
-        perm = g.get("permissions", 0)
-        items.append(f"<li>{name} (ID: {gid}) — perms: {perm}</li>")
-    return "<h1>你的伺服器</h1><ul>" + "".join(items) + "</ul><a href='/'>返回</a>"
+keep_alive()  # 傳入 Flask app
 
-@app.route("/settings", methods=["GET", "POST"])
-def settings():
-    if "discord_user" not in session:
-        return redirect(url_for("login"))
-    config = config_manager.load_config()
-    if request.method == "POST":
-        new_data = {
-            "prefix": (request.form.get("prefix") or config.get("prefix", "!")).strip(),
-            "welcome_channel_id": int(request.form.get("welcome_channel_id") or config.get("welcome_channel_id", 0)),
-            "welcome_message": (request.form.get("welcome_message") or config.get("welcome_message", "")).strip(),
-        }
-        config_manager.save_config(new_data)
-        return redirect(url_for("settings"))
-    html = """<!DOCTYPE html>
-<html lang="zh-Hant">
-<head>
-<meta charset="UTF-8"><title>Bot 設定頁</title>
-<style>
-body { font-family: ui-sans-serif, system-ui; padding: 24px; }
-.card { max-width: 680px; margin: 0 auto; padding: 20px; border: 1px solid #e5e7eb; border-radius: 12px; }
-label { display:block; margin:.5rem 0 .25rem; font-weight:600; }
-input[type="text"], textarea { width:100%; padding:.6rem .8rem; border:1px solid #d1d5db; border-radius:8px; }
-button { margin-top:1rem; padding:.6rem 1rem; border:0; border-radius:10px; cursor:pointer; }
-.primary { background:#111827; color:white; }
-.row { display:grid; gap:12px; }
-a { color:#2563eb; text-decoration:none; }
-</style>
-</head><body>
-<div class="card">
-<h1>Bot 設定</h1>
-<form method="POST" class="row">
-<div><label>Prefix</label><input type="text" name="prefix" value="{{prefix}}"></div>
-<div><label>歡迎頻道 ID</label><input type="text" name="welcome_channel_id" value="{{welcome_channel_id}}"></div>
-<div><label>歡迎訊息（支援 {{ '{user}' }} 變數）</label><textarea name="welcome_message" rows="4">{{welcome_message}}</textarea></div>
-<button class="primary" type="submit">儲存設定</button>
-</form>
-<p style="margin-top:1rem;"><a href="/">返回首頁</a></p>
-</div></body></html>"""
-    return render_template_string(
-        html,
-        prefix=config.get("prefix", "!"),
-        welcome_channel_id=config.get("welcome_channel_id", 0),
-        welcome_message=config.get("welcome_message", "")
-    )
-
-def start_flask():
-    port = int(os.environ.get("PORT", 8080))
-    app.run(host="0.0.0.0", port=port, debug=False)
-
-# ──────────────────────────────────────────────────────────
-# Discord Bot
-# ──────────────────────────────────────────────────────────
-class MyBot(commands.Bot):
-    async def setup_hook(self):
-        # ⚠️ 這裡一定要 await，不然擴充不會被載入
-        for ext in ["cogs.ping", "cogs.welcome", "cogs.verification", "cogs.copy_message"]:
-            try:
-                await self.load_extension(ext)
-                print(f"✅ 已載入 {ext}")
-            except Exception as e:
-                print(f"❌ 無法載入 {ext}: {e}")
-
+# Discord bot 設定
 intents = discord.Intents.default()
-intents.message_content = True  # Developer Portal 要勾 MESSAGE CONTENT
-intents.members = True          # 若有成員事件/成員清單需要，Portal 也要勾 SERVER MEMBERS
+intents.message_content = True
+intents.members = True
 
-bot = MyBot(
-    command_prefix=lambda _bot, msg: config_manager.load_config().get("prefix", "!"),
+bot = commands.Bot(
+    command_prefix=lambda bot, msg: config_manager.load_config().get("prefix", "!"),
     intents=intents
 )
 
 @bot.event
 async def on_ready():
-    print(f"✅ 機器人已上線：{bot.user} (discord.py {discord.__version__})")
+    print(f"✅ 機器人已上線：{bot.user}")
+    for ext in ["cogs.ping", "cogs.welcome", "cogs.verification", "cogs.copy_message"]:
+        try:
+            await bot.load_extension(ext)
+            print(f"✅ 已載入 {ext}")
+        except Exception as e:
+            print(f"❌ 無法載入 {ext}: {e}")
 
-if __name__ == "__main__":
-    # 啟動 Flask（背景執行）
-    Thread(target=start_flask, daemon=True).start()
-    # 啟動 Discord Bot（前景執行）
-    token = os.environ.get("DISCORD_BOT_TOKEN")
-    if not token:
-        raise RuntimeError("環境變數 DISCORD_BOT_TOKEN 未設定！")
-    bot.run(token)
+bot.run(os.getenv("TOKEN"))
