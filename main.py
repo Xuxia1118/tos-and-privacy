@@ -15,17 +15,16 @@ import config_manager  # 你的設定檔管理器
 # ──────────────────────────────────────────────────────────
 # 基本設定
 # ──────────────────────────────────────────────────────────
-DISCORD_API_BASE = "https://discord.com/api"  # ✅ 正確的 Discord API 網域
+DISCORD_API_BASE = "https://discord.com/api"
 CLIENT_ID = os.getenv("DISCORD_CLIENT_ID", "")
 CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET", "")
 REDIRECT_URI = os.getenv("DISCORD_REDIRECT_URI", "")
 OAUTH_SCOPE = "identify guilds email"
 
-# Logging（看清楚錯誤更快定位）
 discord.utils.setup_logging(level=logging.INFO, root=False)
 
 # ──────────────────────────────────────────────────────────
-# Flask APP（唯一的 app）
+# Flask APP
 # ──────────────────────────────────────────────────────────
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", os.urandom(24))
@@ -33,10 +32,7 @@ app.secret_key = os.getenv("SECRET_KEY", os.urandom(24))
 def post_form(url: str, data: dict) -> dict:
     try:
         r = requests.post(url, data=data, headers={"Content-Type": "application/x-www-form-urlencoded"}, timeout=15)
-        if r.headers.get("content-type", "").startswith("application/json"):
-            body = r.json()
-        else:
-            body = {"raw": r.text}
+        body = r.json() if r.headers.get("content-type", "").startswith("application/json") else {"raw": r.text}
         if r.status_code >= 400:
             return {"error": f"HTTP {r.status_code}", "details": body}
         return body
@@ -46,10 +42,7 @@ def post_form(url: str, data: dict) -> dict:
 def get_json(url: str, headers: dict) -> dict:
     try:
         r = requests.get(url, headers=headers, timeout=15)
-        if r.headers.get("content-type", "").startswith("application/json"):
-            body = r.json()
-        else:
-            body = {"raw": r.text}
+        body = r.json() if r.headers.get("content-type", "").startswith("application/json") else {"raw": r.text}
         if r.status_code >= 400:
             return {"error": f"HTTP {r.status_code}", "details": body}
         return body
@@ -91,8 +84,7 @@ def login():
         "client_id": CLIENT_ID,
         "redirect_uri": REDIRECT_URI,
         "response_type": "code",
-        "scope": OAUTH_SCOPE,  # 空白會被 urlencode 成 +，Discord 可接受
-        # 如需 state，可自行加上 "state": "your_csrf_token"
+        "scope": OAUTH_SCOPE,
     }
     auth_url = f"{DISCORD_API_BASE}/oauth2/authorize?{urlencode(params)}"
     return redirect(auth_url)
@@ -209,16 +201,17 @@ def start_flask():
 # ──────────────────────────────────────────────────────────
 class MyBot(commands.Bot):
     async def setup_hook(self):
+        # ⚠️ 這裡一定要 await，不然擴充不會被載入
         for ext in ["cogs.ping", "cogs.welcome", "cogs.verification", "cogs.copy_message"]:
             try:
-                self.load_extension(ext)  # 同步，不能 await
+                await self.load_extension(ext)
                 print(f"✅ 已載入 {ext}")
             except Exception as e:
                 print(f"❌ 無法載入 {ext}: {e}")
 
 intents = discord.Intents.default()
 intents.message_content = True  # Developer Portal 要勾 MESSAGE CONTENT
-intents.members = True          # Developer Portal 要勾 SERVER MEMBERS
+intents.members = True          # 若有成員事件/成員清單需要，Portal 也要勾 SERVER MEMBERS
 
 bot = MyBot(
     command_prefix=lambda _bot, msg: config_manager.load_config().get("prefix", "!"),
@@ -230,7 +223,10 @@ async def on_ready():
     print(f"✅ 機器人已上線：{bot.user} (discord.py {discord.__version__})")
 
 if __name__ == "__main__":
-    # 先啟動 Flask（背景）
+    # 啟動 Flask（背景執行）
     Thread(target=start_flask, daemon=True).start()
-    # 再跑 Bot（前景，結束時整個程式才會退出）
-    bot.run(os.environ["DISCORD_BOT_TOKEN"])
+    # 啟動 Discord Bot（前景執行）
+    token = os.environ.get("DISCORD_BOT_TOKEN")
+    if not token:
+        raise RuntimeError("環境變數 DISCORD_BOT_TOKEN 未設定！")
+    bot.run(token)
