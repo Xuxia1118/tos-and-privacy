@@ -5,7 +5,7 @@ from keep_alive import keep_alive
 from flask import Flask, request
 import requests
 
---- Flask app ---
+#--- Flask app ---
 app = Flask(name)
 
 @app.route("/callback")
@@ -32,7 +32,7 @@ def discord_callback():
 
 keep_alive(app)
 
---- Discord bot ---
+#--- Discord bot ---
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
