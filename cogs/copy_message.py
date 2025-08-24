@@ -1,3 +1,4 @@
+# cogs/copy_message.py
 import asyncio
 import logging
 from typing import Dict, Optional, Set
@@ -18,9 +19,12 @@ class CopyMessage(commands.Cog):
     1) 偵測同一頻道連續兩則內容相同的訊息，幫第二則加上「➕」。
     2) 當有人對該訊息按「➕」，以該使用者名稱/頭像建立 webhook，複製該訊息。
     3) 會在新的複製訊息上也加「➕」。
-    4) 對於同一位使用者，會嘗試移除「上一則他複製出的訊息」的表情符號：
-       - 一定會先移除機器人自己加的「➕」(不需要 Manage Messages)；
-       - 若具備 Manage Messages 權限，則清空所有反應。
+    4) 清理反應策略（方案 A）：
+       - 複製成功後，針對「原始訊息」：
+         先移除機器人自己的「➕」；
+         若具備 Manage Messages 權限，再清掉所有人的「➕」（僅此一種表情）。
+       - 另外仍會針對同一位使用者「上一則他複製出的新訊息」：
+         先移除機器人自己的「➕」，若具備 Manage Messages 權限則清空所有反應。
     """
 
     def __init__(self, bot: commands.Bot):
@@ -116,11 +120,32 @@ class CopyMessage(commands.Cog):
                 # 立刻刪掉 webhook，避免殘留
                 await webhook.delete()
 
+            # ── 方案 A：清理「原始訊息」的 ➕ ─────────────────────
+            perms_src = message.channel.permissions_for(message.guild.me)
+
+            # 先移除機器人自己在「原始訊息」上的 ➕（不需要 Manage Messages）
+            try:
+                await message.remove_reaction("➕", self.bot.user)
+            except discord.HTTPException:
+                # 可能沒有該反應或已被移除，略過
+                pass
+
+            # 若有 Manage Messages，清掉「原始訊息」上所有人的 ➕
+            if perms_src.manage_messages:
+                try:
+                    await message.clear_reaction("➕")
+                except discord.Forbidden:
+                    logger.info("[Info] 權限不足，無法清除原訊息的 ➕。")
+                except discord.HTTPException:
+                    logger.info("[Info] 清除原訊息 ➕ 失敗，可能已被移除或頻率限制。")
+            else:
+                logger.info("[Info] 沒有 Manage Messages，只移除機器人的 ➕（原訊息）。")
+
             # 給新訊息加上「➕」，方便使用者再次複製/串接流程
             if channel_perms.add_reactions:
                 await new_msg.add_reaction("➕")
 
-            # 刪除該使用者上一則複製訊息的表情符號
+            # 刪除該使用者上一則「他複製出的新訊息」的表情符號（你原本的策略）
             await self._cleanup_last_reactions(user_id=user.id, old_msg=self.last_copied_message.get(user.id))
 
             # 更新狀態
@@ -128,14 +153,14 @@ class CopyMessage(commands.Cog):
             self.copied_messages.add(message.id)
 
         except discord.Forbidden:
-            logger.exception("[Forbidden] 權限不足，無法建立或使用 webhook / 移除反應。")
+            logger.exception("[Forbidden] 權限不足，無法建立/使用 webhook 或移除反應。")
         except discord.HTTPException as e:
             logger.exception(f"[HTTPException] Discord API 錯誤: {e}")
         except Exception as e:
             logger.exception(f"[Error] 未預期錯誤: {e}")
 
     # ──────────────────────────────────────────────────────────
-    # 內部：清理上一則複製訊息的表情
+    # 內部：清理上一則複製訊息的表情（保持你原本邏輯）
     # ──────────────────────────────────────────────────────────
     async def _cleanup_last_reactions(self, user_id: int, old_msg: Optional[discord.Message]):
         if not old_msg:
@@ -160,9 +185,9 @@ class CopyMessage(commands.Cog):
                 try:
                     await old_msg.clear_reactions()
                 except discord.HTTPException:
-                    logger.info("[Info] clear_reactions() 失敗，可能是目標訊息上沒有反應或權限變動。")
+                    logger.info("[Info] clear_reactions() 失敗，可能目標訊息上沒有反應或權限變動。")
             else:
-                logger.info("[Info] 沒有 Manage Messages 權限，僅移除機器人自己的 ➕。")
+                logger.info("[Info] 沒有 Manage Messages，僅移除機器人自己的 ➕（上一則新訊息）。")
 
         except Exception as e:
             logger.exception(f"刪除上一個訊息表情符號時出錯: {e}")
