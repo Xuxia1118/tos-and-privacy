@@ -344,12 +344,11 @@ class FunSuite(commands.Cog):
         buf.seek(0)
         await ctx.reply(file=discord.File(buf, filename="meme.jpg"))
 
-   # 取代原本的 cp 指令
-@commands.command(name="cp")
+  @commands.command(name="cp")
 async def cp(self, ctx: commands.Context, role: Optional[discord.Role] = None):
     """
     隨機 CP 配對：!cp 或 !cp @某身分組
-    會直接 @ 兩位被配對的成員
+    會直接 @ 被配對的兩位成員
     """
     if role:
         pool = [m for m in role.members if not m.bot and m != ctx.author]
@@ -360,14 +359,10 @@ async def cp(self, ctx: commands.Context, role: Optional[discord.Role] = None):
         return await ctx.send("可配對的人太少啦～再等等人多一點！")
 
     a, b = random.sample(pool, 2)
-
-    # 用 mention，而且不要順帶 @ 到被回覆的人
     await ctx.send(
-        f"💘 今日緣分是：{a.mention} × {b.mention} ！",
-        allowed_mentions=discord.AllowedMentions(
-            users=True, roles=False, everyone=False, replied_user=False
-        ),
+        f"💘 今日緣分是：{a.mention} × {b.mention} ！"
     )
+
 
     # ────────── 定時任務：每小時飢餓 +1（最大 10） ──────────
     @tasks.loop(minutes=60)
