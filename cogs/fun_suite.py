@@ -245,7 +245,7 @@ class FunSuite(commands.Cog):
             self.xp_cd[(gid, uid)] = now + 10
 
         # 重要：把訊息轉交給指令系統（確保指令會解析）
-        await self.bot.process_commands(message)
+        
 
     # ────────── 指令：寵物 ──────────
     @commands.command(name="adopt")
