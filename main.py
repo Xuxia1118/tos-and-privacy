@@ -34,3 +34,5 @@ async def on_ready():
             print(f"❌ 無法載入 {ext}: {e}")
 
 bot.run(os.getenv("TOKEN"))
+
+bot.load_extension("fun_features")
