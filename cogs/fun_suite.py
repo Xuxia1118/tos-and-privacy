@@ -2,7 +2,6 @@ import io
 import os
 import re
 import random
-import asyncio
 import datetime as dt
 from typing import Optional, Tuple
 
@@ -11,9 +10,10 @@ from discord.ext import commands, tasks
 import aiosqlite
 from PIL import Image, ImageDraw, ImageFont
 
+# 你也可以用環境變數調整 DB 名稱
 DB_PATH = os.getenv("FUN_SUITE_DB", "fun_suite.db")
 
-# 關鍵字彩蛋（可自行擴充）
+# ────────── 彩蛋關鍵字 ──────────
 EGG_TRIGGERS = {
     r"\b累了\b": [
         "要不要先喝口水？💧",
@@ -32,9 +32,11 @@ EGG_TRIGGERS = {
     ],
 }
 
+# ────────── 情緒字典（極簡） ──────────
 NEG_WORDS = {"難過", "崩潰", "累", "煩", "不想", "低潮", "心累", "失落", "生氣"}
 POS_WORDS = {"開心", "太棒", "舒服", "讚", "耶", "爽", "幸福", "喜歡", "超好"}
 
+# ────────── 每日任務池 & 塔羅 ──────────
 DAILY_POOL = [
     "今天用 🍵 表情符號回覆三個人",
     "在 #閒聊 說聲早/午/晚安一次",
@@ -42,7 +44,6 @@ DAILY_POOL = [
     "稱讚別人的作品或截圖一次",
     "跟三位不同的人各聊一句話"
 ]
-
 TAROT = [
     "愚者（正）— 勇敢開始 / 自由 / 機遇",
     "魔術師（正）— 行動力 / 資源整合 / 掌控",
@@ -60,14 +61,10 @@ def taipei_today_key() -> str:
     tz = dt.timezone(dt.timedelta(hours=8))
     return dt.datetime.now(tz).strftime("%Y-%m-%d")
 
-# ──────────────────────────────────────────────────────────
-# 影像：梗圖文字繪製
-# ──────────────────────────────────────────────────────────
+# ────────── 梗圖：字型/排版 ──────────
 def _load_font(size: int):
-    # 嘗試載入常見字體，支援中英
     candidates = [
         "NotoSansCJK-Regular.ttc",
-        "NotoSansCJK.ttc",
         "NotoSansTC-Regular.otf",
         "msjh.ttc",
         "PingFang.ttc",
@@ -89,10 +86,9 @@ def draw_meme(base_img: Image.Image, top: str = "", bottom: str = "") -> Image.I
     def draw_centered(text, y):
         if not text:
             return
-        # 粗略自動換行
+        # 粗略自動換行（逐字，避免中英寬度差異）
         words = list(text)
-        lines = []
-        line = ""
+        lines, line = [], ""
         for w in words:
             test = (line + w).strip()
             bbox = draw.textbbox((0, 0), test, font=font)
@@ -110,7 +106,7 @@ def draw_meme(base_img: Image.Image, top: str = "", bottom: str = "") -> Image.I
             w = bbox[2] - bbox[0]
             x = (W - w) // 2
             # 黑邊白字
-            for dx,dy in [(-2,0),(2,0),(0,-2),(0,2),(-2,-2),(-2,2),(2,-2),(2,2)]:
+            for dx, dy in [(-2,0),(2,0),(0,-2),(0,2),(-2,-2),(-2,2),(2,-2),(2,2)]:
                 draw.text((x+dx, y_cur+dy), ln, font=font, fill=(0,0,0))
             draw.text((x, y_cur), ln, font=font, fill=(255,255,255))
             y_cur += (bbox[3] - bbox[1]) + 6
@@ -120,9 +116,7 @@ def draw_meme(base_img: Image.Image, top: str = "", bottom: str = "") -> Image.I
         draw_centered(bottom, H - (H // 6))
     return im
 
-# ──────────────────────────────────────────────────────────
-# Cog 主體
-# ──────────────────────────────────────────────────────────
+# ────────── Cog 主體 ──────────
 class FunSuite(commands.Cog):
     """彩蛋 / 情緒互動 / 寵物 / 每日任務 / 趣味工具 一包搞定"""
 
@@ -132,7 +126,7 @@ class FunSuite(commands.Cog):
         self.xp_cd: dict[tuple[int,int], int] = {}          # (guild_id, user_id) -> unix_ts
         self.hunger_tick.start()
 
-    # ── DB 初始化 ──
+    # ── 啟用時建立資料表 ──
     async def cog_load(self):
         async with aiosqlite.connect(DB_PATH) as db:
             await db.executescript("""
@@ -162,15 +156,32 @@ class FunSuite(commands.Cog):
             await db.commit()
 
     # ── 小工具 ──
+    def _cd_ok(self, gid: int, uid: int, key: str, seconds: int) -> bool:
+        now = int(dt.datetime.utcnow().timestamp())
+        k = (gid, uid, key)
+        until = self.cooldowns.get(k, 0)
+        if until > now:
+            return False
+        self.cooldowns[k] = now + seconds
+        return True
+
+    def _sentiment(self, text: str) -> Optional[str]:
+        neg = sum(1 for w in NEG_WORDS if w in text)
+        pos = sum(1 for w in POS_WORDS if w in text)
+        if neg - pos >= 2:
+            return "neg"
+        if pos - neg >= 2:
+            return "pos"
+        return None
+
     async def _get_user(self, gid: int, uid: int):
         async with aiosqlite.connect(DB_PATH) as db:
             row = await (await db.execute(
                 "SELECT pet_name, pet_lv, pet_xp, pet_hunger, coins FROM users WHERE guild_id=? AND user_id=?",
                 (gid, uid)
             )).fetchone()
-            if row:  # 有就回
+            if row:
                 return {"pet_name": row[0], "pet_lv": row[1], "pet_xp": row[2], "pet_hunger": row[3], "coins": row[4]}
-            # 沒有即創建
             await db.execute("INSERT INTO users (guild_id, user_id, coins) VALUES (?,?,0)", (gid, uid))
             await db.commit()
             return {"pet_name": None, "pet_lv": 1, "pet_xp": 0, "pet_hunger": 0, "coins": 0}
@@ -183,15 +194,20 @@ class FunSuite(commands.Cog):
             )).fetchone()
             if not row:
                 pet_lv, pet_xp = 1, 0
-                await db.execute("INSERT INTO users (guild_id, user_id, pet_lv, pet_xp) VALUES (?,?,?,?)", (gid, uid, pet_lv, pet_xp))
+                await db.execute(
+                    "INSERT INTO users (guild_id, user_id, pet_lv, pet_xp) VALUES (?,?,?,?)",
+                    (gid, uid, pet_lv, pet_xp)
+                )
             else:
                 pet_lv, pet_xp = row
             pet_xp += xp
-            # 升級：每級 10 * 等級 XP
-            while pet_xp >= 10 * pet_lv:
+            while pet_xp >= 10 * pet_lv:  # 每級需要 10*等級 XP
                 pet_xp -= 10 * pet_lv
                 pet_lv += 1
-            await db.execute("UPDATE users SET pet_lv=?, pet_xp=? WHERE guild_id=? AND user_id=?", (pet_lv, pet_xp, gid, uid))
+            await db.execute(
+                "UPDATE users SET pet_lv=?, pet_xp=? WHERE guild_id=? AND user_id=?",
+                (pet_lv, pet_xp, gid, uid)
+            )
             await db.commit()
             return pet_lv, pet_xp
 
@@ -204,7 +220,6 @@ class FunSuite(commands.Cog):
             )).fetchone()
             if row:
                 return {"challenge": row[0], "completed": int(row[1]), "reward": int(row[2])}
-            # 產生今日任務
             challenge = random.choice(DAILY_POOL)
             reward = random.randint(5, 15)
             await db.execute(
@@ -224,31 +239,18 @@ class FunSuite(commands.Cog):
             if not row or row[0]:
                 return False, 0
             reward = int(row[1])
-            await db.execute("UPDATE daily SET completed=1 WHERE guild_id=? AND user_id=? AND date_key=?", (gid, uid, key))
-            await db.execute("UPDATE users SET coins = COALESCE(coins,0) + ? WHERE guild_id=? AND user_id=?", (reward, gid, uid))
+            await db.execute(
+                "UPDATE daily SET completed=1 WHERE guild_id=? AND user_id=? AND date_key=?",
+                (gid, uid, key)
+            )
+            await db.execute(
+                "UPDATE users SET coins = COALESCE(coins,0) + ? WHERE guild_id=? AND user_id=?",
+                (reward, gid, uid)
+            )
             await db.commit()
             return True, reward
 
-    def _cd_ok(self, gid: int, uid: int, key: str, seconds: int) -> bool:
-        now = int(dt.datetime.utcnow().timestamp())
-        k = (gid, uid, key)
-        until = self.cooldowns.get(k, 0)
-        if until > now:
-            return False
-        self.cooldowns[k] = now + seconds
-        return True
-
-    # ── 情緒偵測（極簡） ──
-    def _sentiment(self, text: str) -> Optional[str]:
-        neg = sum(1 for w in NEG_WORDS if w in text)
-        pos = sum(1 for w in POS_WORDS if w in text)
-        if neg - pos >= 2:
-            return "neg"
-        if pos - neg >= 2:
-            return "pos"
-        return None
-
-    # ── 事件：訊息 ──
+    # ────────── 事件：訊息 ──────────
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
         if message.author.bot or not message.guild:
@@ -257,7 +259,7 @@ class FunSuite(commands.Cog):
         gid, uid = message.guild.id, message.author.id
         content = message.content
 
-        # 1) 關鍵字彩蛋（每人每鍵 10 秒冷卻）
+        # 1) 彩蛋（每人每鍵 10 秒冷卻）
         for pat, replies in EGG_TRIGGERS.items():
             if re.search(pat, content):
                 if self._cd_ok(gid, uid, f"egg:{pat}", 10):
@@ -268,19 +270,23 @@ class FunSuite(commands.Cog):
         senti = self._sentiment(content)
         if senti and self._cd_ok(gid, uid, f"senti:{senti}", 30):
             if senti == "neg":
-                await message.channel.send(f"{message.author.mention} 抱一個 🤗 想抽張 `!tarot` 放鬆一下嗎？")
+                await message.channel.send(
+                    f"{message.author.mention} 抱一個 🤗 想抽張 `!tarot` 放鬆一下嗎？"
+                )
             else:
-                await message.channel.send(f"{message.author.mention} 能量滿滿！分享今天一件開心的小事吧～")
+                await message.channel.send(
+                    f"{message.author.mention} 能量滿滿！分享今天一件開心的小事吧～"
+                )
 
         # 3) 聊天給 XP（每 10 秒一次）
         now = int(dt.datetime.utcnow().timestamp())
         k = (gid, uid)
-        if self.xp_cd.get(k, 0) <= now:
-            await self._get_user(gid, uid)  # 確保存在
+        if getattr(self, "xp_cd", {}).get(k, 0) <= now:
+            await self._get_user(gid, uid)
             await self._add_xp(gid, uid, xp=1)
             self.xp_cd[k] = now + 10
 
-    # ── 指令區：寵物 ──
+    # ────────── 指令：寵物 ──────────
     @commands.command(name="adopt")
     async def adopt(self, ctx: commands.Context, *, pet_name: str):
         """收養寵物：!adopt 皮蛋"""
@@ -288,7 +294,10 @@ class FunSuite(commands.Cog):
         if data["pet_name"]:
             return await ctx.reply(f"你已經有寵物 **{data['pet_name']}** 啦！")
         async with aiosqlite.connect(DB_PATH) as db:
-            await db.execute("UPDATE users SET pet_name=? WHERE guild_id=? AND user_id=?", (pet_name, ctx.guild.id, ctx.author.id))
+            await db.execute(
+                "UPDATE users SET pet_name=? WHERE guild_id=? AND user_id=?",
+                (pet_name, ctx.guild.id, ctx.author.id)
+            )
             await db.commit()
         await ctx.reply(f"🎉 恭喜收養 **{pet_name}** ！好好照顧牠～")
 
@@ -313,7 +322,10 @@ class FunSuite(commands.Cog):
             return await ctx.reply("你還沒有寵物，先 `!adopt 名字` 吧！")
         async with aiosqlite.connect(DB_PATH) as db:
             hunger = max(0, int(d["pet_hunger"] or 0) - 2)
-            await db.execute("UPDATE users SET pet_hunger=? WHERE guild_id=? AND user_id=?", (hunger, ctx.guild.id, ctx.author.id))
+            await db.execute(
+                "UPDATE users SET pet_hunger=? WHERE guild_id=? AND user_id=?",
+                (hunger, ctx.guild.id, ctx.author.id)
+            )
             await db.commit()
         lv, xp = await self._add_xp(ctx.guild.id, ctx.author.id, xp=2)
         await ctx.reply(f"🍖 餵食完成！等級 {lv}，XP {xp}/{10*lv}")
@@ -331,19 +343,28 @@ class FunSuite(commands.Cog):
         rb = random.randint(1, 6) + int(b["pet_lv"])
         if ra > rb:
             await self._add_xp(ctx.guild.id, ctx.author.id, xp=3)
-            return await ctx.reply(f"⚔️ {ctx.author.display_name} 擲出 {ra}，擊敗 {opponent.display_name} 的 {rb}！")
+            return await ctx.reply(
+                f"⚔️ {ctx.author.display_name} 擲出 {ra}，擊敗 {opponent.display_name} 的 {rb}！"
+            )
         if rb > ra:
             await self._add_xp(ctx.guild.id, opponent.id, xp=3)
-            return await ctx.reply(f"⚔️ {opponent.display_name} 擲出 {rb}，擊敗 {ctx.author.display_name} 的 {ra}！")
+            return await ctx.reply(
+                f"⚔️ {opponent.display_name} 擲出 {rb}，擊敗 {ctx.author.display_name} 的 {ra}！"
+            )
         return await ctx.reply("平手！再來一場～")
 
-    # ── 指令區：每日任務 ──
+    # ────────── 指令：每日任務 ──────────
     @commands.command(name="daily")
     async def daily(self, ctx: commands.Context):
         """查看/領取今日任務：!daily"""
         d = await self._get_daily(ctx.guild.id, ctx.author.id)
         status = "✅ 已完成" if d["completed"] else "⏳ 未完成"
-        await ctx.reply(f"📅 今日任務：**{d['challenge']}**\n獎勵：{d['reward']} 金幣\n狀態：{status}\n完成後輸入 `!done` 領獎。")
+        await ctx.reply(
+            f"📅 今日任務：**{d['challenge']}**\n"
+            f"獎勵：{d['reward']} 金幣\n"
+            f"狀態：{status}\n"
+            f"完成後輸入 `!done` 領獎。"
+        )
 
     @commands.command(name="done")
     async def done(self, ctx: commands.Context):
@@ -353,7 +374,7 @@ class FunSuite(commands.Cog):
             return await ctx.reply("今天沒有任務或已領過獎勵。輸入 `!daily` 查看。")
         await ctx.reply(f"🎁 任務完成！獲得 **{reward}** 金幣！")
 
-    # ── 指令區：趣味工具 ──
+    # ────────── 指令：趣味工具 ──────────
     @commands.command(name="tarot")
     async def tarot(self, ctx: commands.Context):
         """抽一張塔羅：!tarot"""
@@ -400,17 +421,19 @@ class FunSuite(commands.Cog):
         a, b = random.sample(pool, 2)
         await ctx.reply(f"💘 今日緣分是：**{a.display_name}** × **{b.display_name}** ！")
 
-    # ── 定時任務：每小時飢餓 +1（最大 10） ──
+    # ────────── 定時任務：每小時飢餓 +1（最大 10） ──────────
     @tasks.loop(minutes=60)
     async def hunger_tick(self):
         async with aiosqlite.connect(DB_PATH) as db:
-            await db.execute("UPDATE users SET pet_hunger = MIN(10, COALESCE(pet_hunger,0) + 1)")
+            await db.execute(
+                "UPDATE users SET pet_hunger = MIN(10, COALESCE(pet_hunger,0) + 1)"
+            )
             await db.commit()
 
     @hunger_tick.before_loop
     async def _before_tick(self):
         await self.bot.wait_until_ready()
 
-# ── Extension 載入點 ──
+# ────────── Extension 載入點 ──────────
 async def setup(bot: commands.Bot):
     await bot.add_cog(FunSuite(bot))
