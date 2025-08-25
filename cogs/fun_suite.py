@@ -213,15 +213,15 @@ class FunSuite(commands.Cog):
             return
         gid, uid, content = message.guild.id, message.author.id, message.content
 
-        # 彩蛋（每人每鍵 10 秒冷卻）
+        # 彩蛋（每人每鍵 5 秒冷卻）
         for key, replies in EGG_TRIGGERS.items():
-            if key in content and self._cd_ok(gid, uid, f"egg:{key}", 10):
+            if key in content and self._cd_ok(gid, uid, f"egg:{key}", 5):
                 await message.channel.send(random.choice(replies))
                 break
 
-        # 情緒偵測（30 秒冷卻）
+        # 情緒偵測（5 秒冷卻）
         senti = self._sentiment(content)
-        if senti and self._cd_ok(gid, uid, f"senti:{senti}", 30):
+        if senti and self._cd_ok(gid, uid, f"senti:{senti}", 5):
             if senti == "neg":
                 await message.channel.send(f"{message.author.mention} 抱一個 🤗 要不要抽張 `!tarot`？")
             else:
@@ -344,20 +344,30 @@ class FunSuite(commands.Cog):
         buf.seek(0)
         await ctx.reply(file=discord.File(buf, filename="meme.jpg"))
 
-    @commands.command(name="cp")
-    async def cp(self, ctx: commands.Context, role: Optional[discord.Role] = None):
-        """
-        隨機 CP 配對：!cp 或 !cp @某身分組
-        從伺服器成員（或指定身分組）中抽兩位，排除機器人與自己。
-        """
-        if role:
-            pool = [m for m in role.members if not m.bot and m != ctx.author]
-        else:
-            pool = [m for m in ctx.guild.members if not m.bot and m != ctx.author]
-        if len(pool) < 2:
-            return await ctx.reply("可配對的人太少啦～再等等人多一點！")
-        a, b = random.sample(pool, 2)
-        await ctx.reply(f"💘 今日緣分是：**{a.display_name}** × **{b.display_name}** ！")
+   # 取代原本的 cp 指令
+@commands.command(name="cp")
+async def cp(self, ctx: commands.Context, role: Optional[discord.Role] = None):
+    """
+    隨機 CP 配對：!cp 或 !cp @某身分組
+    會直接 @ 兩位被配對的成員
+    """
+    if role:
+        pool = [m for m in role.members if not m.bot and m != ctx.author]
+    else:
+        pool = [m for m in ctx.guild.members if not m.bot and m != ctx.author]
+
+    if len(pool) < 2:
+        return await ctx.send("可配對的人太少啦～再等等人多一點！")
+
+    a, b = random.sample(pool, 2)
+
+    # 用 mention，而且不要順帶 @ 到被回覆的人
+    await ctx.send(
+        f"💘 今日緣分是：{a.mention} × {b.mention} ！",
+        allowed_mentions=discord.AllowedMentions(
+            users=True, roles=False, everyone=False, replied_user=False
+        ),
+    )
 
     # ────────── 定時任務：每小時飢餓 +1（最大 10） ──────────
     @tasks.loop(minutes=60)
