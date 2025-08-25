@@ -26,7 +26,7 @@ bot = commands.Bot(
 @bot.event
 async def on_ready():
     print(f"✅ 機器人已上線：{bot.user}")
-    for ext in ["cogs.ping", "cogs.welcome", "cogs.verification", "cogs.copy_message"]:
+    for ext in ["cogs.ping", "cogs.welcome", "cogs.verification", "cogs.copy_message", "cogs.fun_suite"]:
         try:
             await bot.load_extension(ext)
             print(f"✅ 已載入 {ext}")
@@ -35,4 +35,4 @@ async def on_ready():
 
 bot.run(os.getenv("TOKEN"))
 
-bot.load_extension("fun_features")
+
