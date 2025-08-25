@@ -235,8 +235,7 @@ class FunSuite(commands.Cog):
             self.xp_cd[(gid, uid)] = now + 10
 
         # ⬅️ 關鍵：把訊息交給指令解析器（避免吃掉指令）
-        await self.bot.process_commands(message)
-
+      
     # ────────── 指令：寵物 ──────────
     @commands.command(name="adopt")
     async def adopt(self, ctx: commands.Context, *, pet_name: str):
