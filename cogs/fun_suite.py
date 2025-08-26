@@ -7,7 +7,7 @@ from typing import Optional, Tuple, Dict
 import discord
 from discord.ext import commands, tasks
 import aiosqlite
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, Image
 
 DB_PATH = os.getenv("FUN_SUITE_DB", "fun_suite.db")
 
@@ -57,7 +57,7 @@ def _load_font(size: int):
             continue
     return ImageFont.load_default()
 
-def draw_meme(base_img, top: str = "", bottom: str = ""):
+def draw_meme(base_img: Image.Image, top: str = "", bottom: str = "") -> Image.Image:
     im = base_img.convert("RGB")
     W, H = im.size
     draw = ImageDraw.Draw(im)
@@ -229,9 +229,9 @@ class FunSuite(commands.Cog):
                 await message.channel.send(random.choice(replies))
                 break
 
-        # 情緒偵測（5 秒冷卻）
+        # 情緒偵測（30 秒冷卻）
         senti = self._sentiment(content)
-        if senti and self._cd_ok(gid, uid, f"senti:{senti}", 5):
+        if senti and self._cd_ok(gid, uid, f"senti:{senti}", 30):
             if senti == "neg":
                 await message.channel.send(f"{message.author.mention} 抱一個 🤗 要不要抽張 `!tarot`？")
             else:
@@ -244,8 +244,8 @@ class FunSuite(commands.Cog):
             await self._add_xp(gid, uid, xp=1)
             self.xp_cd[(gid, uid)] = now + 10
 
-        # 重要：把訊息轉交給指令系統（確保指令會解析）
-        
+        # 把訊息交給指令解析（避免吃掉指令）
+        await self.bot.process_commands(message)
 
     # ────────── 指令：寵物 ──────────
     @commands.command(name="adopt")
@@ -363,7 +363,7 @@ class FunSuite(commands.Cog):
     async def cp(self, ctx: commands.Context, role: Optional[discord.Role] = None):
         """
         隨機 CP 配對：!cp 或 !cp @某身分組
-        會直接 @ 被配對的兩位成員
+        不會 @ 用戶，只顯示名稱
         """
         if role:
             pool = [m for m in role.members if not m.bot and m != ctx.author]
@@ -372,7 +372,10 @@ class FunSuite(commands.Cog):
         if len(pool) < 2:
             return await ctx.send("可配對的人太少啦～再等等人多一點！")
         a, b = random.sample(pool, 2)
-        await ctx.send(f"💘 今日緣分是：{a.mention} × {b.mention} ！")
+        await ctx.send(
+            f"💘 今日緣分是：**{a.display_name}** × **{b.display_name}** ！",
+            allowed_mentions=discord.AllowedMentions.none()
+        )
 
     # ────────── 定時任務：每小時飢餓 +1（最大 10） ──────────
     @tasks.loop(minutes=60)
